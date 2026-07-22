@@ -1,0 +1,42 @@
+name: x-feed-fetch
+
+on:
+  schedule:
+    - cron: "7 3 * * *"   # 10:07 по Сайгону (UTC+7); дайджест-задача Claude стартует в 11:00
+  workflow_dispatch: {}
+
+concurrency:
+  group: x-feed-fetch
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Fetch tweets
+        env:
+          TWITTERAPI_KEY: ${{ secrets.TWITTERAPI_KEY }}
+        run: python fetch_tweets.py
+
+      - name: Commit data
+        run: |
+          git config user.name "x-digest-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A data
+          if git diff --cached --quiet; then
+            echo "нет изменений"
+            exit 0
+          fi
+          git commit -m "data: $(date -u '+%Y-%m-%d %H:%M') UTC"
+          git pull --rebase origin ${GITHUB_REF_NAME} || true
+          git push
